@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TDL - To Do List</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Firebase App scripts (BEFORE your main script!) -->
+<script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore-compat.js"></script>
+
+
+
+
+
+
+
+
+
+
+<!-- Add this in your HTML <head> -->
+    <script type="module">
+        import {
+          initializeApp
+        } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
+        import {
+          getFirestore,
+          collection,
+          addDoc,
+          deleteDoc,
+          updateDoc,
+          doc,
+          getDocs,
+          getDoc,
+          setDoc,
+          query,
+          orderBy
+        } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js";
+      
+        const firebaseConfig = {
+          apiKey: "AIzaSyAY4-_emRp3yWvriTjgY6xdXgqBNxa6QwQ",
+          authDomain: "tdls-81060.firebaseapp.com",
+          databaseURL: "https://tdls-81060-default-rtdb.firebaseio.com",
+          projectId: "tdls-81060",
+          storageBucket: "tdls-81060.appspot.com",
+          messagingSenderId: "877407764296",
+          appId: "1:877407764296:web:85ce15cacee2ebe5273d7d",
+          measurementId: "G-EH58GQTE92"
+        };
+      
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+      
+        let points = 0;
+        const pointsEl = document.getElementById("task-count");
+      
+        const modal = document.getElementById("task-modal");
+        const openModalBtn = document.getElementById("open-modal-btn");
+        const addTaskBtn = document.getElementById("add-task-btn");
+        const cancelBtn = document.getElementById("cancel-btn");
+      
+        const titleInput = document.getElementById("task-title");
+        const descInput = document.getElementById("task-desc");
+      
+        const ongoingEl = document.getElementById("ongoing-tasks");
+        const completedEl = document.getElementById("completed-tasks");
+      
+        const ongoingTab = document.getElementById("ongoing-tab");
+        const completedTab = document.getElementById("completed-tab");
+      
+        openModalBtn.onclick = () => {
+          modal.style.display = "block";
+          titleInput.value = "";
+          descInput.value = "";
+          titleInput.focus();
+        };
+      
+        cancelBtn.onclick = () => {
+          modal.style.display = "none";
+        };
+      
+        window.onclick = function (event) {
+          if (event.target == modal) {
+            modal.style.display = "none";
+          }
+        };
+      
+        addTaskBtn.onclick = async () => {
+          const title = titleInput.value.trim();
+          const desc = descInput.value.trim();
+      
+          if (!title) {
+            alert("Please enter a task title!");
+            return;
+          }
+      
+          const docRef = await addDoc(collection(db, "tasks"), {
+            title,
+            description: desc,
+            completed: false,
+            timestamp: new Date()
+          });
+      
+          const task = createTaskElement(title, desc, docRef.id, false);
+          ongoingEl.appendChild(task);
+          modal.style.display = "none";
+          updateTaskCount();
+        };
+      
+        function createTaskElement(title, desc, id, isCompleted) {
+          const task = document.createElement("div");
+          task.className = "task-card";
+      
+          const content = document.createElement("div");
+          content.className = "task-content";
+          content.innerHTML = `<div class="task-title">${title}</div><div class="task-desc">${desc}</div>`;
+      
+          const actions = document.createElement("div");
+          actions.className = "task-actions";
+      
+          if (!isCompleted) {
+            const completeBtn = document.createElement("button");
+            completeBtn.innerHTML = "✅";
+            completeBtn.onclick = async () => {
+              await updateDoc(doc(db, "tasks", id), {
+                completed: true
+              });
+              completedEl.appendChild(createTaskElement(title, desc, id, true));
+              task.remove();
+              points++;
+              await savePoints(points);
+              updateTaskCount();
+            };
+            actions.appendChild(completeBtn);
+          }
+      
+          const renameBtn = document.createElement("button");
+          renameBtn.innerHTML = "✏️";
+          renameBtn.onclick = async () => {
+            const newTitle = prompt("Edit Title", title);
+            const newDesc = prompt("Edit Description", desc);
+            if (newTitle !== null && newDesc !== null) {
+              await updateDoc(doc(db, "tasks", id), {
+                title: newTitle,
+                description: newDesc
+              });
+              content.querySelector(".task-title").textContent = newTitle;
+              content.querySelector(".task-desc").textContent = newDesc;
+            }
+          };
+      
+          const deleteBtn = document.createElement("button");
+          deleteBtn.innerHTML = "🗑️";
+          deleteBtn.onclick = async () => {
+            if (confirm("Delete this task?")) {
+              await deleteDoc(doc(db, "tasks", id));
+              task.remove();
+              updateTaskCount();
+            }
+          };
+      
+          actions.appendChild(renameBtn);
+          actions.appendChild(deleteBtn);
+      
+          task.appendChild(content);
+          task.appendChild(actions);
+      
+          return task;
+        }
+      
+        function updateTaskCount() {
+          pointsEl.textContent = `Tasks🔥: ${points}`;
+        }
+      
+        async function savePoints(score) {
+          await setDoc(doc(db, "meta", "score"), {
+            value: score
+          });
+        }
+      
+        async function loadPoints() {
+          const snap = await getDoc(doc(db, "meta", "score"));
+          if (snap.exists()) {
+            points = snap.data().value;
+          } else {
+            points = 0;
+          }
+          updateTaskCount();
+        }
+      
+        async function loadTasks() {
+          const q = query(collection(db, "tasks"), orderBy("timestamp", "desc"));
+          const querySnapshot = await getDocs(q);
+          ongoingEl.innerHTML = "";
+          completedEl.innerHTML = "";
+      
+          querySnapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            const taskElement = createTaskElement(data.title, data.description, docSnap.id, data.completed);
+            if (data.completed) {
+              completedEl.appendChild(taskElement);
+            } else {
+              ongoingEl.appendChild(taskElement);
+            }
+          });
+        }
+      
+        ongoingTab.onclick = () => {
+          ongoingEl.style.display = "flex";
+          completedEl.style.display = "none";
+          ongoingTab.classList.add("active");
+          completedTab.classList.remove("active");
+        };
+      
+        completedTab.onclick = () => {
+          completedEl.style.display = "flex";
+          ongoingEl.style.display = "none";
+          completedTab.classList.add("active");
+          ongoingTab.classList.remove("active");
+        };
+      
+        await loadPoints();
+        await loadTasks();
+        ongoingTab.click();
+      </script>
+      
+      
+
+
+
+
+
+
+
+
+
+</head>
+<body>
+
+  <!-- Header Section -->
+  <header class="header">
+    <div class="header-left">
+      <img src="tdl.png" alt="TDL Logo" class="logo">
+      <h1>TDL</h1>
+    </div>
+    
+    <div class="header-center">
+      <button id="ongoing-tab" class="tab-button active">Ongoing</button>
+      <button id="completed-tab" class="tab-button">Completed</button>
+    </div>
+  
+    <div class="header-right">
+      <span id="task-count" class="task-count">Tasks🔥: 0</span>
+      <button id="open-modal-btn" class="add-task-btn">+ Add Task</button>
+    </div>
+  </header>
+
+  <!-- Ongoing Tasks Section -->
+  <div id="ongoing-tasks" style="color: black; font-weight: bolder"  class="task-list active-tab">
+    <!-- Tasks will be dynamically added here -->
+  </div>
+
+  <!-- Completed Tasks Section -->
+  <div id="completed-tasks" style=" color: black; font-weight: bolder;" class="task-list">
+    <!-- Completed tasks will be dynamically added here -->
+  </div>
+<center>
+  <!-- Modal for Adding Task -->
+  <div id="task-modal"class="modal">
+    <div class="modal-content">
+      <h3>Create New Task</h3>
+      <input style="width: 200px; height: 30px; border-radius: 30px;" type="text" id="task-title" placeholder="Task Title" required>
+      <input type="text" style="width: 320px; height: 50px; border-radius: 30px;" id="task-desc" placeholder="Task Description" required>
+     <div class="modal-actions">
+        <button      id="add-task-btn">Add Task</button>
+        <button id="cancel-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+</center>
+  <script src="script.js"></script>
+
+</body>
+</html>
